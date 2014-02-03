@@ -1,0 +1,19 @@
+<root>
+	<norename name="epic" />
+	<!--
+	IGNORE
+	Performance warning JS1272: Function defined but not referenced
+	-->
+	<output path="bin\nodus.js" type="js">
+		<arguments>-clobber -term -esc -braces:same -line:M,4 -minify:false -ignore:JS1272</arguments>
+		<input path="node.js"/>
+		<input path="tools.js"/>
+	</output>
+	
+	<output path="bin\nodus.min.js" type="js">
+		<arguments>-clobber -term -esc -ignore:JS1272</arguments>
+		<input path="node.js"/>
+		<input path="tools.js"/>
+	</output>
+	
+</root>

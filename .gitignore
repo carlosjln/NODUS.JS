@@ -1,0 +1,82 @@
+﻿# IGNORE DIRECTORIES
+epic/obj/
+[Oo]bj
+[Rr]elease
+[Dd]ebug/
+x64/
+[Bb]ackup
+
+# mstest test results
+TestResults
+[Tt]est[Rr]esult*
+
+# ReSharper is a .NET coding add-in
+_ReSharper*
+
+# Installshield output folder 
+[Ee]xpress
+
+# Click-Once directory
+publish
+
+# Publish Web Output
+*.Publish.xml
+
+# NuGet Packages Directory
+packages
+
+# Windows Store app package directory
+AppPackages/
+
+
+# IGNORE FILE EXTENSIONS
+*.suo
+*.user
+*.sln.docstates
+
+*.dll
+*_i.c
+*_p.c
+*.ilk
+*.meta
+*.obj
+*.pch
+*.pdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.log
+*.vspscc
+*.vssscc
+.builds
+*.[Cc]ache
+*.nuspec
+
+# Visual Studio profiler
+*.psess
+*.vsp
+*.vspx
+
+# Guidance Automation Toolkit
+*.gpState
+
+# NCrunch
+*.ncrunch*
+.*crunch*.local.xml
+
+# Windows Azure Build Output
+csx
+*.build.csdef
+
+# Others
+sql
+~$*
+*.dbmdl
+
+#Exceptions
+!tools/**/*.*
