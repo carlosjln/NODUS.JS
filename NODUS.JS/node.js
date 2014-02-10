@@ -12,9 +12,11 @@
 	var cached_views = {};
 	var validated_nodes = {};
 
-	function NODUS() {}
+	function NODUS() {
+	}
 
 	// NODE CLASS
+
 	function Node( object ) {
 		// USE CASES
 		// new Node( Node ), Node( Node )
@@ -24,13 +26,13 @@
 
 		// USE CASES
 		// new Node( "node id" ), Node( "node id" )
-		if( typeof object == "string" ) {
+		if( typeof object === "string" ) {
 			return new Node( { id: object } );
 		}
 
 		var self = this;
 		var node_id = object.id;
-		
+
 		// TODO: VALIDATE IF NODE ID IS NOT PRESENT IN THE NODE COLLECTION NOR ON REQUESTED COLLECTION
 
 		var existing_node = node_collection[ node_id ];
@@ -88,10 +90,10 @@
 
 			if( action ) {
 				var params = Array.prototype.slice.call( arguments );
-				var query = params[1];
-				var data = params[2];
+				var query = params[ 1 ];
+				var data = params[ 2 ];
 
-				if( query && typeof query == "object" ) {
+				if( query && typeof query === "object" ) {
 					data = query;
 					query = null;
 				}
@@ -110,11 +112,11 @@
 			}
 		}
 	};
-		
+
 	Node.update = function( node_id, data ) {
 		update_node_data( node_id, data );
 	};
-	
+
 	NODUS.Node = Node;
 
 	function update_node_data( node_id, data ) {
@@ -132,7 +134,7 @@
 	}
 
 	function set_handlers( node, raw_handlers ) {
-		if( raw_handlers == null || raw_handlers == "" ) {
+		if( raw_handlers === null || raw_handlers === "" ) {
 			return null;
 		}
 
@@ -190,7 +192,7 @@
 	}
 
 	function validate( node, callback ) {
-		if( node == null ) {
+		if( node === null ) {
 			///#DEBUG
 			console.log( "The node parameter can't be null." );
 			///#ENDDEBUG
@@ -210,12 +212,12 @@
 		};
 
 		// IF NODE DATA IS MISSING
-		if( requested[ node_id ].data == false ) {
+		if( requested[ node_id ].data === false ) {
 			return request_node_data( node, resume_validation );
 		}
 
 		// ENSURE THE NODE HANDLERS HAVE BEEN LOADED PRIOR ITS USAGE
-		if( requested[ node_id ].handlers == false ) {
+		if( requested[ node_id ].handlers === false ) {
 			return request_action_handlers( node, resume_validation );
 		}
 
@@ -241,9 +243,10 @@
 		var before_request = view_handler.before_request || function() {
 			return true;
 		};
-		
-		var on_request = view_handler.on_request || function() {};
-		
+
+		var on_request = view_handler.on_request || function() {
+		};
+
 		var proceed;
 
 		try {
@@ -266,19 +269,19 @@
 				return success( cached_view );
 			}
 
-			var options = {
-				success: success,
-				error: handle_application_exception
-			};
+			request( {
+				url: node_id + "/view/",
 
-			request( node_id + "/view/", null, options );
+				on_success: success,
+				on_error: handle_application_exception
+			} );
 		}
 	}
 
 	function execute_action( options ) {
 		var action_id = options.action_id;
 
-		if( action_id == null ) {
+		if( action_id === null ) {
 			///#DEBUG
 			console.log( "The action_id can't be null." );
 			///#ENDDEBUG
@@ -291,7 +294,7 @@
 		var node_id = action.node_id;
 		var node = node_collection[ node_id ];
 
-		if( validated_nodes[ action.node_id ] == null ) {
+		if( validated_nodes[ action.node_id ] === null ) {
 			return validate( node, function() {
 				execute_action( options );
 			} );
@@ -303,19 +306,20 @@
 		var handlers = node_handlers_collection[ action.node_id ];
 		var action_handler = handlers.actions[ action_name ];
 
-		if( action_handler == null ) {
+		if( action_handler === null ) {
 			throw new Error( "The action '" + action_name + "' is not defined on the handler." );
 		}
 
 		var before_request = action_handler.before_request || function() {
 			return true;
 		};
-		
+
 		var get_query = action_handler.get_params || function() {
 			return "";
 		};
-		
-		var on_request = action_handler.on_request || function() {};
+
+		var on_request = action_handler.on_request || function() {
+		};
 
 		var on_action_success = action_handler.on_success || function() {
 			throw new Error( "The method 'Handle.action." + action_name + ".on_success' is undefined." );
@@ -355,16 +359,17 @@
 
 			on_request.call( action_handler, data );
 
-			var request_options = {
-				success: on_success,
-				error: handle_application_exception
-			};
+			request( {
+				url: 'action/' + action_id,
 
-			request( 'action/' + action_id, query_string, request_options );
+				on_success: on_success,
+				on_error: handle_application_exception
+			} );
 		}
 	}
 
 	// UTILITY METHODS
+
 	function request_node_data( node, callback ) {
 		var node_id = node.id;
 
@@ -374,8 +379,10 @@
 		console.log( "Requesting data for Node{ name=" + node.name + " id=" + node_id + " }" );
 		///#ENDDEBUG
 
-		var options = {
-			success: function( response ) {
+		request( {
+			url: node_id,
+
+			on_success: function( response, node_id ) {
 				var reply = NODUS.parse_reply( response );
 
 				if( reply.has_errors() ) {
@@ -385,10 +392,11 @@
 				Node.update( node_id, reply.data );
 
 				return callback();
-			}
-		};
-
-		request( node_id, null, options );
+			},
+			// on_failure: handle_application_exception,
+			// context: {},
+			parameters: [node_id]
+		} );
 	}
 
 	function request_action_handlers( node, callback ) {
@@ -400,25 +408,27 @@
 		console.log( "Requesting action handlers for Node{ name=" + node.name + " id=" + node_id + " }" );
 		///#ENDDEBUG
 
-		var options = {
-			success: function( response ) {
+		request( {
+			url: node_id + "/handlers",
+
+			on_success: function( response, node_id ) {
 				var reply = NODUS.parse_reply( response );
 
 				if( reply.has_errors() ) {
 					return default_exception_handler( reply.exceptions );
 				}
 
-				set_handlers( node, reply.data );
+				Node.update( node_id, reply.data );
 
-				callback();
-			}
-		};
+				return callback();
+			},
 
-		request( node_id + "/handlers", null, options );
+			parameters: [node_id]
+		} );
 	}
 
 	function build_request_success_callback( node_id, view_handler, params, handle_application_exception ) {
-		
+
 		var view_handler_on_success = view_handler.on_success || function() {
 			throw new Error( "Handle.view.on_success is undefined." );
 		};
@@ -438,7 +448,7 @@
 			}
 
 			// ONLY ADD THE VIEW CSS IF IT DOES NOT EXISTS
-			if( document.getElementById( style_id ) == null ) {
+			if( document.getElementById( style_id ) === null ) {
 				NODUS.create_style( view.style ).id = style_id;
 			}
 
@@ -450,21 +460,22 @@
 		};
 	}
 
-	function request( url, data, options ) {
-		var handle_exception = options.exception || default_exception_handler;
+	function request( options ) {
+		options.url = "node/" + options.url;
+		options.on_error = options.on_error || default_exception_handler;
+		
+//		var request_options = {
+//			type: 'POST',
+//			dataType: "json",
+//			data: data,
+//			error: function( exception ) {
+//				exception_handler.call( {}, new ApplicationException( exception ) );
+//			}
+//		};
 
-		var request_options = {
-			type: 'POST',
-			dataType: "json",
-			data: data,
-			error: function( exception ) {
-				handle_exception.call( {}, new ApplicationException( exception ) );
-			}
-		};
+		// NODUS.merge( request_options, options );
 
-		NODUS.merge( request_options, options );
-
-		NODUS.ajax( "node/" + url, request_options );
+		NODUS.request( options );
 	}
 
 	function default_exception_handler( exception ) {
@@ -472,8 +483,9 @@
 	}
 
 	// EXCEPTIONS
+
 	function ApplicationException( exception ) {
-		exception = typeof exception == 'string' ? { message: exception } : exception;
+		exception = typeof exception === 'string' ? { message: exception } : exception;
 
 		this.validation = [];
 		this.application = [{
@@ -483,10 +495,10 @@
 	}
 
 	function document_click_handler( e ) {
-		var element = $( e.target );
-
-		var node_id = get_node_id( element );
-		var action_id = get_action_id( element );
+		var element = ( e.target || e.srcElement ) || document;
+		
+		var node_id = get_attribute( element, "node-id" );
+		var action_id = get_attribute( element, "action-id" );
 
 		if( node_id || action_id ) {
 			e.preventDefault();
@@ -501,17 +513,26 @@
 		}
 	}
 
-	function get_node_id( element ) {
-		return element.attr( "node-id" ) || element.parent( "[ node-id ]" ).attr( "node-id" );
-	}
+	function get_attribute( element, name ) {
+		var node_id = element.getAttribute( name );
+		var parent_node;
+		
+		if( node_id === undefined  && (parent_node = element.parentNode) ) {
+			node_id = parent_node.getAttribute( name );
+		}
 
-	function get_action_id( element ) {
-		return element.attr( "action-id" ) || element.parent( "[ action-id ]" ).attr( "action-id" );
+		return node_id;
 	}
 
 	// SET DOCUMENT CLICK HANDLER
 	// This avoids the need to set a specific handler for each button that is rendered on the UI
-	$( window.document ).click( document_click_handler );
+	if( document.addEventListener ) {
+		document.addEventListener( "click", document_click_handler, false );
+	}else {
+		document.attachEvent( "onclick", document_click_handler );
+	}
+	
 	window.NODUS = NODUS;
 	window.Node = Node;
+	
 } )( window, document );

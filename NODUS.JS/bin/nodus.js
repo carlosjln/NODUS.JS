@@ -12,7 +12,7 @@
         if (object instanceof Node) {
             return object
         }
-        if (typeof object == "string") {
+        if (typeof object === "string") {
             return new Node({id: object})
         }
         var self = this;
@@ -51,7 +51,7 @@
                     var params = Array.prototype.slice.call(arguments);
                     var query = params[1];
                     var data = params[2];
-                    if (query && typeof query == "object") {
+                    if (query && typeof query === "object") {
                         data = query;
                         query = null
                     }
@@ -77,7 +77,7 @@
         set_actions(node, data["actions"])
     }
     function set_handlers(node, raw_handlers) {
-        if (raw_handlers == null || raw_handlers == "") {
+        if (raw_handlers === null || raw_handlers === "") {
             return null
         }
         var handlers = {};
@@ -116,7 +116,7 @@
         }
     }
     function validate(node, callback) {
-        if (node == null) {
+        if (node === null) {
             return null
         }
         var node_id = node.id;
@@ -127,10 +127,10 @@
         var resume_validation = function() {
                 validate(node, callback)
             };
-        if (requested[node_id].data == false) {
+        if (requested[node_id].data === false) {
             return request_node_data(node, resume_validation)
         }
-        if (requested[node_id].handlers == false) {
+        if (requested[node_id].handlers === false) {
             return request_action_handlers(node, resume_validation)
         }
         validated_nodes[node_id] = node;
@@ -163,22 +163,21 @@
             if (cached_view) {
                 return success(cached_view)
             }
-            var options = {
-                    success: success, error: handle_application_exception
-                };
-            request(node_id + "/view/", null, options)
+            request({
+                url: node_id + "/view/", on_success: success, on_error: handle_application_exception
+            })
         }
     }
     function execute_action(options) {
         var action_id = options.action_id;
-        if (action_id == null) {
+        if (action_id === null) {
             return null
         }
         var action = node_actions_collection[action_id];
         var action_name = action.name;
         var node_id = action.node_id;
         var node = node_collection[node_id];
-        if (validated_nodes[action.node_id] == null) {
+        if (validated_nodes[action.node_id] === null) {
             return validate(node, function() {
                     execute_action(options)
                 })
@@ -187,7 +186,7 @@
         var data = options.data || {};
         var handlers = node_handlers_collection[action.node_id];
         var action_handler = handlers.actions[action_name];
-        if (action_handler == null) {
+        if (action_handler === null) {
             throw new Error("The action '" + action_name + "' is not defined on the handler.");
         }
         var before_request = action_handler.before_request || function() {
@@ -224,37 +223,38 @@
             query = query || get_query.call(action_handler, data);
             var query_string = 'query=' + encodeURIComponent(NODUS.encode_base64(query));
             on_request.call(action_handler, data);
-            var request_options = {
-                    success: on_success, error: handle_application_exception
-                };
-            request('action/' + action_id, query_string, request_options)
+            request({
+                url: 'action/' + action_id, on_success: on_success, on_error: handle_application_exception
+            })
         }
     }
     function request_node_data(node, callback) {
         var node_id = node.id;
         requested[node_id].data = true;
-        var options = {success: function(response) {
+        request({
+            url: node_id, on_success: function(response, node_id) {
                     var reply = NODUS.parse_reply(response);
                     if (reply.has_errors()) {
                         return default_exception_handler(reply.exceptions)
                     }
                     Node.update(node_id, reply.data);
                     return callback()
-                }};
-        request(node_id, null, options)
+                }, parameters: [node_id]
+        })
     }
     function request_action_handlers(node, callback) {
         var node_id = node.id;
         requested[node_id].handlers = true;
-        var options = {success: function(response) {
+        request({
+            url: node_id + "/handlers", on_success: function(response, node_id) {
                     var reply = NODUS.parse_reply(response);
                     if (reply.has_errors()) {
                         return default_exception_handler(reply.exceptions)
                     }
-                    set_handlers(node, reply.data);
-                    callback()
-                }};
-        request(node_id + "/handlers", null, options)
+                    Node.update(node_id, reply.data);
+                    return callback()
+                }, parameters: [node_id]
+        })
     }
     function build_request_success_callback(node_id, view_handler, params, handle_application_exception) {
         var view_handler_on_success = view_handler.on_success || function() {
@@ -270,7 +270,7 @@
                 if (view.cache) {
                     cached_views[node_id] = view
                 }
-                if (document.getElementById(style_id) == null) {
+                if (document.getElementById(style_id) === null) {
                     NODUS.create_style(view.style).id = style_id
                 }
                 try {
@@ -281,30 +281,25 @@
                 }
             }
     }
-    function request(url, data, options) {
-        var handle_exception = options.exception || default_exception_handler;
-        var request_options = {
-                type: 'POST', dataType: "json", data: data, error: function(exception) {
-                        handle_exception.call({}, new ApplicationException(exception))
-                    }
-            };
-        NODUS.merge(request_options, options);
-        NODUS.ajax("node/" + url, request_options)
+    function request(options) {
+        options.url = "node/" + options.url;
+        options.on_error = options.on_error || default_exception_handler;
+        NODUS.request(options)
     }
     function default_exception_handler(exception) {
         console.log("ApplicationException: ", exception)
     }
     function ApplicationException(exception) {
-        exception = typeof exception == 'string' ? {message: exception} : exception;
+        exception = typeof exception === 'string' ? {message: exception} : exception;
         this.validation = [];
         this.application = [{
                 name: 'ApplicationException', message: exception ? exception.message : ''
             }]
     }
     function document_click_handler(e) {
-        var element = $(e.target);
-        var node_id = get_node_id(element);
-        var action_id = get_action_id(element);
+        var element = (e.target || e.srcElement) || document;
+        var node_id = get_attribute(element, "node-id");
+        var action_id = get_attribute(element, "action-id");
         if (node_id || action_id) {
             e.preventDefault();
             element.blur()
@@ -317,13 +312,20 @@
         }
         else {}
     }
-    function get_node_id(element) {
-        return element.attr("node-id") || element.parent("[ node-id ]").attr("node-id")
+    function get_attribute(element, name) {
+        var node_id = element.getAttribute(name);
+        var parent_node;
+        if (node_id === undefined && (parent_node = element.parentNode)) {
+            node_id = parent_node.getAttribute(name)
+        }
+        return node_id
     }
-    function get_action_id(element) {
-        return element.attr("action-id") || element.parent("[ action-id ]").attr("action-id")
+    if (document.addEventListener) {
+        document.addEventListener("click", document_click_handler, false)
     }
-    $(window.document).click(document_click_handler);
+    else {
+        document.attachEvent("onclick", document_click_handler)
+    }
     window.NODUS = NODUS;
     window.Node = Node
 })(window, document);
@@ -340,7 +342,7 @@
         var node;
         while (i--) {
             node = new Node(nodes[i]);
-            if (node.parent_id == parent_id) {
+            if (node.parent_id === parent_id) {
                 parent[node.name] = node;
                 build_tree(node, nodes)
             }
@@ -348,13 +350,13 @@
     }
     function parse_reply(object) {
         var exceptions = object.exceptions;
-        exceptions.validation = $.grep(exceptions, function(e) {
+        exceptions.validation = filter(exceptions, function(e) {
             return e.type === "Validation"
         });
-        exceptions.application = $.grep(exceptions, function(e) {
+        exceptions.application = filter(exceptions, function(e) {
             return e.type === "Application"
         });
-        exceptions.system = $.grep(exceptions, function(e) {
+        exceptions.system = filter(exceptions, function(e) {
             return e.type === "System"
         });
         object.has_errors = function() {
@@ -369,7 +371,7 @@
             var to_string = core_types.toString;
             function type(object) {
                 var typeof_object = typeof(object);
-                if (object == null) {
+                if (object === null) {
                     return 'null'
                 }
                 if (typeof_object === 'object' || typeof_object === 'function') {
@@ -379,6 +381,62 @@
             }
             return type
         })();
+    var request = (function(window, undefined) {
+            var get_transport = window.XMLHttpRequest ? function() {
+                    return new XMLHttpRequest
+                } : function() {
+                    return new ActiveXObject("Microsoft.XMLHTTP")
+                };
+            function ajax(settings) {
+                if ((this instanceof ajax) == false) {
+                    return new ajax(settings)
+                }
+                var t = this;
+                var transport = t.transport = get_transport();
+                var typeof_default_property;
+                var value;
+                for (var property in settings) {
+                    typeof_default_property = get_type(t[property]);
+                    value = settings[property];
+                    if (settings.hasOwnProperty(property) && (typeof_default_property === "undefined" || typeof_default_property === get_type(value))) {
+                        t[property] = value
+                    }
+                }
+                var method = t.method;
+                var get_method = "GET";
+                var post_method = "POST";
+                transport.open(method, t.url, true);
+                transport.onreadystatechange = function() {
+                    t.on_ready_state_change.call(t)
+                };
+                if (method == post_method) {
+                    transport.setRequestHeader('Content-type', 'application/x-www-form-urlencoded')
+                }
+                transport.send(t.send)
+            }
+            ajax.prototype = {
+                url: "", method: "GET", on_complete: function(response){}, on_success: function(response){}, on_error: function(response){}, on_ready_state_change: function(parameters) {
+                        var transport = this.transport;
+                        var ready_state = transport.readyState;
+                        var status;
+                        if (ready_state !== 4) {
+                            return null
+                        }
+                        try {
+                            status = transport.status
+                        }
+                        catch(e) {
+                            return null
+                        }
+                        if (status !== 200) {
+                            return null
+                        }
+                        var response_text = transport.responseText;
+                        console.log(response_text)
+                    }, get_error: function(number, message){}
+            };
+            return ajax
+        })(window);
     function copy(object, target) {
         var object_type = get_type(object);
         var clone;
@@ -483,10 +541,23 @@
         document.getElementsByTagName('head')[0].insertBefore(style, null);
         return style
     }
-    ;
+    function filter(list, condition) {
+        var length = list.length;
+        var i = 0;
+        var result = [];
+        var item;
+        for (; i < length; i++) {
+            item = list[i];
+            if (condition(item)) {
+                result[result.length] = item
+            }
+        }
+        return result
+    }
     NODUS.build_node_tree = build_node_tree;
     NODUS.parse_reply = parse_reply;
     NODUS.merge = merge;
     NODUS.encode_base64 = encode_base64;
-    NODUS.encode_utf8 = encode_utf8
+    NODUS.encode_utf8 = encode_utf8;
+    NODUS.request = request
 })(NODUS, window, document);
