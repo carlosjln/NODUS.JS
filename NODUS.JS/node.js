@@ -132,7 +132,7 @@
 
 			var handlers = node_handlers_collection[ node_id ];
 			var view_handler = handlers[ "view" ] || { is_empty: true };
-			var on_exception = view_handler.exception || handlers.exception;
+			var on_exception = view_handler.on_exception || handlers.on_exception;
 
 			var proceed;
 
@@ -312,7 +312,7 @@
 		raw_node_collection[ node_id ] = data;
 
 		set_handlers( node_id, data[ "handlers" ] );
-		set_actions( node, data[ "actions" ] );
+		set_actions( node_id, data[ "actions" ] );
 
 		return node;
 	}
@@ -450,9 +450,9 @@
 
 		var action_name = action.name;
 
-		var handlers = node_handlers_collection[ node_id ];
-		var action_handler = handlers.actions[ action_name ] || { is_empty: true };
-		var action_handler_on_success = action_handler.on_success;
+		var node_handlers = node_handlers_collection[ node_id ];
+		var action_handler = node_handlers.actions[ action_name ] || { is_empty: true };
+		var on_success = action_handler.on_success;
 
 		var before_request = action_handler.before_request || function() {
 			return true;
@@ -462,7 +462,7 @@
 			return "";
 		};
 
-		var on_application_exception = action_handler.exception || handlers.actions.exception || handlers.exception || default_exception_handler;
+		var on_exception = action_handler.on_exception || node_handlers.actions.on_exception || node_handlers.on_exception || default_exception_handler;
 		var continue_request;
 
 		// REQUIREMENTS CHECKPOINT
@@ -471,7 +471,7 @@
 			return false;
 		}
 
-		if( action_handler_on_success === undefined ) {
+		if( on_success === undefined ) {
 			console.log( new Error( "The method 'Handle.action." + action_name + ".on_success' is undefined." ) );
 			return false;
 		}
@@ -479,7 +479,7 @@
 		try {
 			continue_request = before_request.call( action_handler, data );
 		} catch( exception ) {
-			return on_application_exception.call( action_handler, exception );
+			return on_exception.call( action_handler, exception );
 		}
 
 		if( continue_request ) {
@@ -489,8 +489,12 @@
 
 			var context = {
 				query: query,
+				
 				action_name: action_name,
-				action_handler: action_handler
+				action_handler: action_handler,
+				
+				on_success: on_success,
+				on_exception: on_exception
 			};
 
 			AJAX( {
@@ -500,31 +504,31 @@
 
 				context: context,
 
-				before_request: before_request_action_execute,
-				on_success: on_success_action_execute,
-				on_error: on_application_exception
+				before_request: ajax_before_request,
+				on_success: ajax_on_success,
+				on_error: on_exception
 			} );
 		}
 	}
 
-	function before_request_action_execute( response ) {
+	function ajax_before_request( ) {
 		///#DEBUG
 		console.log( "Executing action '{" + this.action_name + "}' with params:", this.query || null );
 		///#ENDDEBUG
 	}
 
-	function on_success_action_execute( response ) {
+	function ajax_on_success( response ) {
 		var reply = NODUS.parse_reply( response );
 		var self = this;
 
 		if( reply.has_errors() ) {
-			return self.on_application_exception.call( self.action_handler, reply.exceptions );
+			return self.on_exception.call( self.action_handler, reply.exceptions );
 		}
 
 		try {
-			self.on_action_success.call( self.action_handler, reply, self.data );
-		} catch( on_succeess_exception ) {
-			self.on_application_exception.call( self.action_handler, new ApplicationException( on_succeess_exception ) );
+			self.on_success.call( self.action_handler, reply, self.data );
+		} catch( exception ) {
+			self.on_exception.call( self.action_handler, new ApplicationException( exception ) );
 		}
 	}
 

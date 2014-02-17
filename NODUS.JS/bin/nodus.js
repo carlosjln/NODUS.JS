@@ -74,7 +74,7 @@
                 var node = node_collection[node_id];
                 var handlers = node_handlers_collection[node_id];
                 var view_handler = handlers["view"] || {is_empty: true};
-                var on_exception = view_handler.exception || handlers.exception;
+                var on_exception = view_handler.on_exception || handlers.on_exception;
                 var proceed;
                 if (view_handler.is_empty) {
                     var exception = new ApplicationException("The Node [" + node.name + "] does not have a view handler.");
@@ -186,7 +186,7 @@
         node.parent_id = data.parent_id;
         raw_node_collection[node_id] = data;
         set_handlers(node_id, data["handlers"]);
-        set_actions(node, data["actions"]);
+        set_actions(node_id, data["actions"]);
         return node
     }
     function set_handlers(node_id, raw_handlers) {
@@ -270,22 +270,22 @@
                 })
         }
         var action_name = action.name;
-        var handlers = node_handlers_collection[node_id];
-        var action_handler = handlers.actions[action_name] || {is_empty: true};
-        var action_handler_on_success = action_handler.on_success;
+        var node_handlers = node_handlers_collection[node_id];
+        var action_handler = node_handlers.actions[action_name] || {is_empty: true};
+        var on_success = action_handler.on_success;
         var before_request = action_handler.before_request || function() {
                 return true
             };
         var get_query = action_handler.get_query || function() {
                 return ""
             };
-        var on_application_exception = action_handler.exception || handlers.actions.exception || handlers.exception || default_exception_handler;
+        var on_exception = action_handler.on_exception || node_handlers.actions.on_exception || node_handlers.on_exception || default_exception_handler;
         var continue_request;
         if (action_handler.is_empty) {
             console.log(new Error("The action '" + action_name + "' is not defined on the handler."));
             return false
         }
-        if (action_handler_on_success === undefined) {
+        if (on_success === undefined) {
             console.log(new Error("The method 'Handle.action." + action_name + ".on_success' is undefined."));
             return false
         }
@@ -293,33 +293,33 @@
             continue_request = before_request.call(action_handler, data)
         }
         catch(exception) {
-            return on_application_exception.call(action_handler, exception)
+            return on_exception.call(action_handler, exception)
         }
         if (continue_request) {
             query = query || get_query.call(action_handler, data);
             var query_string = 'query=' + encodeURIComponent(NODUS.encode_base64(query));
             var context = {
-                    query: query, action_name: action_name, action_handler: action_handler
+                    query: query, action_name: action_name, action_handler: action_handler, on_success: on_success, on_exception: on_exception
                 };
             AJAX({
-                url: 'action/' + action_id, method: "POST", send: query_string, context: context, before_request: before_request_action_execute, on_success: on_success_action_execute, on_error: on_application_exception
+                url: 'action/' + action_id, method: "POST", send: query_string, context: context, before_request: ajax_before_request, on_success: ajax_on_success, on_error: on_exception
             })
         }
     }
-    function before_request_action_execute(response) {
+    function ajax_before_request() {
         console.log("Executing action '{" + this.action_name + "}' with params:", this.query || null)
     }
-    function on_success_action_execute(response) {
+    function ajax_on_success(response) {
         var reply = NODUS.parse_reply(response);
         var self = this;
         if (reply.has_errors()) {
-            return self.on_application_exception.call(self.action_handler, reply.exceptions)
+            return self.on_exception.call(self.action_handler, reply.exceptions)
         }
         try {
-            self.on_action_success.call(self.action_handler, reply, self.data)
+            self.on_success.call(self.action_handler, reply, self.data)
         }
-        catch(on_succeess_exception) {
-            self.on_application_exception.call(self.action_handler, new ApplicationException(on_succeess_exception))
+        catch(exception) {
+            self.on_exception.call(self.action_handler, new ApplicationException(exception))
         }
     }
     function AJAX(options) {
