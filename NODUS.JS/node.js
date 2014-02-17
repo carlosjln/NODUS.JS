@@ -1,3 +1,11 @@
+/*!
+ * NODUS.JS - v1.0.0
+ * Front-End API for NODUS
+ * https://github.com/carlosjln/NODUS.JS
+ *
+ * Author: Carlos J. Lopez
+ * https://github.com/carlosjln
+ */
 
 ( function( window, document ) {
 	var node_collection = {};
@@ -13,10 +21,207 @@
 	var validated_nodes = {};
 
 	function NODUS() {
+
 	}
 
-	// NODE CLASS
+	// REQUEST NODE DATA
+	var request_node_data = ( function(  ) {
+		
+		function request_data( node_id, callback, data ) {
+			( requested[ node_id ] = ( requested[ node_id ] || { data: false, handlers: false } ) ).data = true;
 
+			var context = {
+				validate: validate_node,
+
+				node_id: node_id,
+				callback: callback,
+				data: data,
+
+				parse_reply: NODUS.parse_reply
+			};
+
+			AJAX( {
+				url: node_id,
+				context: context,
+
+				before_request: before_request,
+				on_success: on_success,
+				on_error: default_exception_handler
+			} );
+		}
+
+		function before_request() {
+			///#DEBUG
+			console.log( "Requesting data for node { id='" + this.node_id + "' }" );
+			///#ENDDEBUG
+		}
+
+		function on_success( response ) {
+			var self = this;
+			var node_id = self.node_id;
+			var reply = NODUS.parse_reply( response );
+			
+			if( reply.has_errors() ) {
+				return self.exception_handler( reply.exceptions );
+			}
+
+			update_node( node_id, reply.data );
+
+			return validate_node_handlers( node_id, self.callback, self.data );
+		}
+		
+		return request_data;
+	} )();	
+
+	// REQUEST NODE ACTION HANDLERS
+	var request_action_handlers = (function(){
+		function request_handlers( node_id, callback, data ) {
+			requested[ node_id ].handlers = true;
+
+			var context = {
+				node_id: node_id,
+				callback: callback,
+				data: data,
+
+				parse_reply: NODUS.parse_reply,
+				exception_handler: default_exception_handler
+			};
+
+			AJAX( {
+				url: node_id + "/handlers",
+
+				context: context,
+
+				before_request: before_request,
+				on_success: on_success,
+				on_error: default_exception_handler
+			} );
+		}
+
+		function before_request(  ) {
+			///#DEBUG
+			var node = node_collection[ this.node_id ];
+			console.log( "Requesting action handlers for Node{ name=" + node.name + " id=" + node.id + " }" );
+			///#ENDDEBUG
+		}
+
+		function on_success( response ) {
+			var self = this;
+			var reply = self.parse_reply( response );
+
+			if( reply.has_errors() ) {
+				return self.exception_handler( reply.exceptions );
+			}
+
+			set_handlers( self.node_id, reply.data );
+
+			return self.callback( self.node_id, self.data );
+		}
+		
+		return request_handlers;
+	} )();
+
+	// REQUEST NODE VIEW
+	var get_view = ( function() {
+		function request_view( node_id, data ) {
+			///#DEBUG
+			console.log( "Requesting view for node { id='" + node_id + "' }" );
+			///#ENDDEBUG
+
+			var node = node_collection[ node_id ];
+
+			var handlers = node_handlers_collection[ node_id ];
+			var view_handler = handlers[ "view" ] || { is_empty: true };
+			var on_exception = view_handler.exception || handlers.exception;
+
+			var proceed;
+
+			if( view_handler.is_empty ) {
+				var exception = new ApplicationException( "The Node [" + node.name + "] does not have a view handler." );
+				return on_exception.call( handlers, exception );
+			}
+
+			// NODE HANDLERS
+			var view_before_request = view_handler.before_request || function() {
+				return true;
+			};
+
+			try {
+				proceed = view_before_request.call( view_handler, data );
+			} catch( exception ) {
+				return on_exception.call( view_handler, exception, data );
+			}
+
+			if( proceed ) {
+				var view_on_success = view_handler.on_success || function() {
+					throw new Error( "Handle.view.on_success is undefined." );
+				};
+
+				var context = {
+					node: node,
+					NODE: Node,
+
+					view_handler: view_handler,
+					view_on_success: view_on_success,
+					on_application_exception: on_exception
+				};
+
+				var cached_view = cached_views[ node_id ];
+				if( cached_view ) {
+					return on_sucess.call( view_handler, cached_view );
+				}
+
+				AJAX( {
+					url: node_id + "/view/",
+					context: context,
+
+					before_request: before_request,
+					on_success: on_sucess,
+					on_error: on_exception
+				} );
+			}
+
+			return node;
+		}
+
+		function before_request() {
+			///#DEBUG
+			var node = this.node;
+			console.log( "Requesting view for Node{ name=" + node.name + " id=" + node.id + " }" );
+			///#ENDDEBUG
+		}
+
+		function on_sucess( response ) {
+			var self = this;
+			var reply = NODUS.parse_reply( response );
+
+			if( reply.has_errors() ) {
+				return self.on_application_exception.call( self.view_handler, reply.exceptions );
+			}
+
+			var view = reply.data;
+			var style_id = "view_" + self.node.id;
+
+			if( view.cache ) {
+				cached_views[ self.node.id ] = view;
+			}
+
+			// ONLY ADD THE VIEW CSS IF IT DOES NOT EXISTS
+			if( document.getElementById( style_id ) === null ) {
+				NODUS.create_style( view.style ).id = style_id;
+			}
+
+			try {
+				self.view_on_success.call( self.view_handler, view, self.data );
+			} catch( on_success_exception ) {
+				self.on_application_exception.call( self.view_handler, new ApplicationException( on_success_exception ) );
+			}
+		}
+		
+		return request_view;
+	} )();
+	
+	// NODE CLASS
 	function Node( object ) {
 		// USE CASES
 		// new Node( Node ), Node( Node )
@@ -33,95 +238,72 @@
 		var self = this;
 		var node_id = object.id;
 
-		// TODO: VALIDATE IF NODE ID IS NOT PRESENT IN THE NODE COLLECTION NOR ON REQUESTED COLLECTION
-
-		var existing_node = node_collection[ node_id ];
-		if( existing_node ) {
-			return existing_node;
-		}
-
-		var requested_node = requested[ node_id ];
-		if( requested_node ) {
-			console.log( "Node{ id=" + node_id + "} was requested, but not registered on the node collection." );
-			return null;
-		}
-
 		// USE CASE
 		// new Node( any )
 		if( self instanceof Node ) {
 			// EXPOSE NODE ID
 			self.id = node_id;
 
-			requested[ node_id ] = {
-				data: false,
-				handlers: false
-			};
-
-			// REGISTER NEW NODE
-			node_collection[ node_id ] = self;
-
-			update_node_data( node_id, object );
-
-			return this;
+			return self;
 		}
 
 		return null;
 	}
 
 	Node.prototype = {
-		view: function( data ) {
-			var self = this;
-			var callback = function() {
-				get_view( self, data );
-			};
-
-			validate( self, callback );
-
-			return self;
-		},
-
 		// USE CASES
 		// Node( ... ).exec( "action_name" )
 		// Node( ... ).exec( "action_name", "property=value&..." )
 		// Node( ... ).exec( "action_name", "property=value&...", { data } )
 		// Node( ... ).exec( "action_name", { data } )
-		exec: function( action_name ) {
+		exec: function( action_name, query, data ) {
 			var action = this[ action_name ];
 
-			if( action ) {
-				var params = Array.prototype.slice.call( arguments );
-				var query = params[ 1 ];
-				var data = params[ 2 ];
-
+			if( typeof action === "function" ) {
 				if( query && typeof query === "object" ) {
 					data = query;
 					query = null;
 				}
 
-				var options = {
-					action_id: action.id,
-					query: query,
-					data: data
-				};
-
-				execute_action( options );
+				execute_action( action.id, query, data );
 			} else {
 				///#DEBUG
-				console.log( "EXCEPTION: The action '" + action_name + "' is undefined." );
+				console.log( new Error( "The action '" + action_name + "' is undefined." ) );
 				///#ENDDEBUG
 			}
 		}
 	};
 
-	Node.update = function( node_id, data ) {
-		update_node_data( node_id, data );
+	Node.view = function( node_id, data ) {
+		validate_node( node_id, get_view, data );
 	};
 
-	NODUS.Node = Node;
+	// UTILITIES
+	function register_node( node ) {
+		var id = node.id;
 
-	function update_node_data( node_id, data ) {
-		// CREATE A NEW NODE IF ONE DOES NOT EXIST ON LOCAL COLLECTION
-		var node = node_collection[ node_id ] || new Node( node_id );
+		if( node_collection[ id ] instanceof Node ) {
+			return null;
+		}
+
+		requested[ id ] = {
+			data: false,
+			handlers: false
+		};
+
+		node_collection[ id ] = node;
+	}
+	
+	function update_node( node_id, data ) {
+		var node = node_collection[ node_id ];
+
+		if( ( node instanceof Node ) === false ) {
+			///#DEBUG
+			console.log( new Error( "The node { id='" + node_id + "' } cannot be updated." ) );
+			console.log( node );
+			///#ENDDEBUG
+			return null;
+		}
 
 		node.name = data.name;
 		node.caption = data.caption;
@@ -129,12 +311,16 @@
 
 		raw_node_collection[ node_id ] = data;
 
-		set_handlers( node, data[ "handlers" ] );
+		set_handlers( node_id, data[ "handlers" ] );
 		set_actions( node, data[ "actions" ] );
+
+		return node;
 	}
 
-	function set_handlers( node, raw_handlers ) {
-		if( raw_handlers === null || raw_handlers === "" ) {
+	function set_handlers( node_id, raw_handlers ) {
+		var node = node_collection[ node_id ];
+
+		if( ( node instanceof Node ) === false || raw_handlers === null || raw_handlers === "" ) {
 			return null;
 		}
 
@@ -151,14 +337,20 @@
 			throw exception;
 		}
 
-		node_handlers_collection[ node.id ] = handlers;
+		node_handlers_collection[ node_id ] = handlers;
+
+		return node;
 	}
 
-	function set_actions( node, raw_actions ) {
+	function set_actions( node_id, raw_actions ) {
 		raw_actions = raw_actions || [];
 
-		var node_id = node.id;
+		var node = node_collection[ node_id ];
 		var i = raw_actions.length;
+
+		if( ( node instanceof Node ) === false ) {
+			return null;
+		}
 
 		while( i-- ) {
 			var raw_action = raw_actions[ i ];
@@ -167,10 +359,7 @@
 			var action_name = raw_action.name;
 			var method = ( function( id ) {
 				return function( data ) {
-					execute_action( {
-						action_id: id,
-						data: data
-					} );
+					execute_action( id, null, data );
 				};
 			} )( action_id );
 
@@ -189,98 +378,57 @@
 
 			node_actions_collection[ action_id ] = action;
 		}
-	}
 
-	function validate( node, callback ) {
-		if( node === null ) {
+		return node;
+	}
+	
+	// NODE VALIDATION STEP 1
+	function validate_node( node_id, callback, data ) {
+		///#DEBUG
+		console.log( "Validating node { id='" + node_id + "' }" );
+		///#ENDDEBUG
+
+		if( typeof node_id !== "string" ) {
 			///#DEBUG
-			console.log( "The node parameter can't be null." );
+			console.log( new Error( "The [node id] must be a string GUID" ) );
+			console.log( "Instead received:", node_id );
 			///#ENDDEBUG
 			return null;
 		}
 
-		var node_id = node.id;
-		var validated_node = validated_nodes[ node_id ];
+		// CRITICAL
+		register_node( Node( node_id ) );
 
-		// EXECUTE THE CALLBACK IF THE NODE HAVE BEEN VALIDATED PREVIOUSLY
-		if( validated_node ) {
-			return callback.call( validated_node );
-		}
+		return validate_node_data( node_id, callback, data );
+	}
 
-		var resume_validation = function() {
-			validate( node, callback );
-		};
+	// NODE VALIDATION STEP 2
+	// ENSURE THE NODE DATA HAVE BEEN REQUESTED AND IS AVAILABLE
+	function validate_node_data( node_id, callback, data ) {
+		var data_is_avaliable = requested[ node_id ] !== undefined && requested[ node_id ].data === true;
+		var method = data_is_avaliable ? validate_node_handlers : request_node_data;
 
-		// IF NODE DATA IS MISSING
-		if( requested[ node_id ].data === false ) {
-			return request_node_data( node, resume_validation );
-		}
+		return method( node_id, callback, data );
+	}
 
-		// ENSURE THE NODE HANDLERS HAVE BEEN LOADED PRIOR ITS USAGE
+	// NODE VALIDATION STEP 3
+	// ENSURE NODE HANDLERS ARE AVAILABLE
+	function validate_node_handlers( node_id, callback, data ) {
+		///#DEBUG
+		console.log( "Validating node handlers { id='" + node_id + "' }" );
+		///#ENDDEBUG
+
 		if( requested[ node_id ].handlers === false ) {
-			return request_action_handlers( node, resume_validation );
+			return request_action_handlers( node_id, callback, data );
 		}
 
 		// FINALLY REGISTER THE NODE AFTER ALL REQUIREMENTS HAVE BEEN MET
-		validated_nodes[ node_id ] = node;
+		validated_nodes[ node_id ] = node_collection[ node_id ];
 
-		callback.call( node );
+		return callback( node_id, data );
 	}
 
-	function get_view( node, params ) {
-		var node_id = node.id;
-
-		var handlers = node_handlers_collection[ node_id ];
-		var view_handler = handlers[ "view" ] || { is_empty: true };
-		var handle_application_exception = view_handler.exception || handlers.exception || default_exception_handler;
-
-		if( view_handler.is_empty ) {
-			var exception = new ApplicationException( "The Node [" + node.name + "] does not have a view handler." );
-			return handle_application_exception.call( handlers, exception );
-		}
-
-		// HANDLERS
-		var before_request = view_handler.before_request || function() {
-			return true;
-		};
-
-		var on_request = view_handler.on_request || function() {
-		};
-
-		var proceed;
-
-		try {
-			proceed = before_request.call( view_handler, params );
-		} catch( exception ) {
-			return handle_application_exception.call( view_handler, exception );
-		}
-
-		if( proceed ) {
-			var success = build_request_success_callback( node_id, view_handler, params, handle_application_exception );
-
-			///#DEBUG
-			console.log( "Requesting view for Node{ name=" + node.name + " id=" + node_id + " }" );
-			///#ENDDEBUG
-
-			on_request.call( view_handler );
-
-			var cached_view = cached_views[ node_id ];
-			if( cached_view ) {
-				return success( cached_view );
-			}
-
-			request( {
-				url: node_id + "/view/",
-
-				on_success: success,
-				on_error: handle_application_exception
-			} );
-		}
-	}
-
-	function execute_action( options ) {
-		var action_id = options.action_id;
-
+	function execute_action( action_id, query, data ) {
 		if( action_id === null ) {
 			///#DEBUG
 			console.log( "The action_id can't be null." );
@@ -288,215 +436,129 @@
 			return null;
 		}
 
+		query = query || "";
+		data = data || {};
+
 		var action = node_actions_collection[ action_id ];
-		var action_name = action.name;
-
 		var node_id = action.node_id;
-		var node = node_collection[ node_id ];
 
-		if( validated_nodes[ action.node_id ] === null ) {
-			return validate( node, function() {
-				execute_action( options );
+		if( validated_nodes[ node_id ] === null ) {
+			return validate_node( node_id, function() {
+				execute_action( action_id, query, data );
 			} );
 		}
 
-		var query = options.query || "";
-		var data = options.data || {};
+		var action_name = action.name;
 
-		var handlers = node_handlers_collection[ action.node_id ];
-		var action_handler = handlers.actions[ action_name ];
-
-		if( action_handler === null ) {
-			throw new Error( "The action '" + action_name + "' is not defined on the handler." );
-		}
+		var handlers = node_handlers_collection[ node_id ];
+		var action_handler = handlers.actions[ action_name ] || { is_empty: true };
+		var action_handler_on_success = action_handler.on_success;
 
 		var before_request = action_handler.before_request || function() {
 			return true;
 		};
 
-		var get_query = action_handler.get_params || function() {
+		var get_query = action_handler.get_query || function() {
 			return "";
 		};
 
-		var on_request = action_handler.on_request || function() {
-		};
-
-		var on_action_success = action_handler.on_success || function() {
-			throw new Error( "The method 'Handle.action." + action_name + ".on_success' is undefined." );
-		};
-
-		var handle_application_exception = action_handler.exception || handlers.actions.exception || handlers.exception || default_exception_handler;
+		var on_application_exception = action_handler.exception || handlers.actions.exception || handlers.exception || default_exception_handler;
 		var continue_request;
+
+		// REQUIREMENTS CHECKPOINT
+		if( action_handler.is_empty ) {
+			console.log( new Error( "The action '" + action_name + "' is not defined on the handler." ) );
+			return false;
+		}
+
+		if( action_handler_on_success === undefined ) {
+			console.log( new Error( "The method 'Handle.action." + action_name + ".on_success' is undefined." ) );
+			return false;
+		}
 
 		try {
 			continue_request = before_request.call( action_handler, data );
 		} catch( exception ) {
-			return handle_application_exception.call( action_handler, exception );
+			return on_application_exception.call( action_handler, exception );
 		}
 
 		if( continue_request ) {
-			var on_success = function( response ) {
-				var reply = NODUS.parse_reply( response );
-
-				if( reply.has_errors() ) {
-					return handle_application_exception.call( action_handler, reply.exceptions );
-				}
-
-				try {
-					on_action_success.call( action_handler, reply, data );
-				} catch( on_succeess_exception ) {
-					handle_application_exception( new ApplicationException( on_succeess_exception ) );
-				}
-			};
-
 			// QUERY STRING SPECIFIED OVER DIRECT CALL WILL BE PREFERED OVER GET QUERY METHOD
 			query = query || get_query.call( action_handler, data );
 			var query_string = 'query=' + encodeURIComponent( NODUS.encode_base64( query ) );
 
-			///#DEBUG
-			console.log( "Executing action '{0}' with params:".format( action_name ), query || null );
-			///#ENDDEBUG
+			var context = {
+				query: query,
+				action_name: action_name,
+				action_handler: action_handler
+			};
 
-			on_request.call( action_handler, data );
-
-			request( {
+			AJAX( {
 				url: 'action/' + action_id,
+				method: "POST",
+				send: query_string,
 
-				on_success: on_success,
-				on_error: handle_application_exception
+				context: context,
+
+				before_request: before_request_action_execute,
+				on_success: on_success_action_execute,
+				on_error: on_application_exception
 			} );
 		}
 	}
 
-	// UTILITY METHODS
-
-	function request_node_data( node, callback ) {
-		var node_id = node.id;
-
-		requested[ node_id ].data = true;
-
+	function before_request_action_execute( response ) {
 		///#DEBUG
-		console.log( "Requesting data for Node{ name=" + node.name + " id=" + node_id + " }" );
+		console.log( "Executing action '{" + this.action_name + "}' with params:", this.query || null );
 		///#ENDDEBUG
-
-		request( {
-			url: node_id,
-
-			on_success: function( response, node_id ) {
-				var reply = NODUS.parse_reply( response );
-
-				if( reply.has_errors() ) {
-					return default_exception_handler( reply.exceptions );
-				}
-
-				Node.update( node_id, reply.data );
-
-				return callback();
-			},
-			// on_failure: handle_application_exception,
-			// context: {},
-			parameters: [node_id]
-		} );
 	}
 
-	function request_action_handlers( node, callback ) {
-		var node_id = node.id;
+	function on_success_action_execute( response ) {
+		var reply = NODUS.parse_reply( response );
+		var self = this;
 
-		requested[ node_id ].handlers = true;
+		if( reply.has_errors() ) {
+			return self.on_application_exception.call( self.action_handler, reply.exceptions );
+		}
 
-		///#DEBUG
-		console.log( "Requesting action handlers for Node{ name=" + node.name + " id=" + node_id + " }" );
-		///#ENDDEBUG
-
-		request( {
-			url: node_id + "/handlers",
-
-			on_success: function( response, node_id ) {
-				var reply = NODUS.parse_reply( response );
-
-				if( reply.has_errors() ) {
-					return default_exception_handler( reply.exceptions );
-				}
-
-				Node.update( node_id, reply.data );
-
-				return callback();
-			},
-
-			parameters: [node_id]
-		} );
+		try {
+			self.on_action_success.call( self.action_handler, reply, self.data );
+		} catch( on_succeess_exception ) {
+			self.on_application_exception.call( self.action_handler, new ApplicationException( on_succeess_exception ) );
+		}
 	}
 
-	function build_request_success_callback( node_id, view_handler, params, handle_application_exception ) {
+	// AJAX REQUEST
 
-		var view_handler_on_success = view_handler.on_success || function() {
-			throw new Error( "Handle.view.on_success is undefined." );
-		};
-
-		return function( response ) {
-			var reply = NODUS.parse_reply( response );
-
-			if( reply.has_errors() ) {
-				return handle_application_exception( reply.exceptions );
-			}
-
-			var view = reply.data;
-			var style_id = "view_" + node_id;
-
-			if( view.cache ) {
-				cached_views[ node_id ] = view;
-			}
-
-			// ONLY ADD THE VIEW CSS IF IT DOES NOT EXISTS
-			if( document.getElementById( style_id ) === null ) {
-				NODUS.create_style( view.style ).id = style_id;
-			}
-
-			try {
-				view_handler_on_success.call( view_handler, view, params );
-			} catch( on_success_exception ) {
-				handle_application_exception.call( view_handler, new ApplicationException( on_success_exception ) );
-			}
-		};
-	}
-
-	function request( options ) {
+	function AJAX( options ) {
 		options.url = "node/" + options.url;
 		options.on_error = options.on_error || default_exception_handler;
-		
-//		var request_options = {
-//			type: 'POST',
-//			dataType: "json",
-//			data: data,
-//			error: function( exception ) {
-//				exception_handler.call( {}, new ApplicationException( exception ) );
-//			}
-//		};
-
-		// NODUS.merge( request_options, options );
 
 		NODUS.request( options );
 	}
 
+	// EXCEPTIONS HANDLING
 	function default_exception_handler( exception ) {
 		console.log( "ApplicationException: ", exception );
 	}
 
-	// EXCEPTIONS
-
 	function ApplicationException( exception ) {
+		var self = this;
+
 		exception = typeof exception === 'string' ? { message: exception } : exception;
 
-		this.validation = [];
-		this.application = [{
+		self.validation = [];
+		self.application = [{
 			name: 'ApplicationException',
 			message: exception ? exception.message : ''
 		}];
 	}
 
+	// DOCUMENT EVENT HANDLERS
+
 	function document_click_handler( e ) {
 		var element = ( e.target || e.srcElement ) || document;
-		
+
 		var node_id = get_attribute( element, "node-id" );
 		var action_id = get_attribute( element, "action-id" );
 
@@ -506,18 +568,17 @@
 		}
 
 		if( node_id ) {
-			new Node( node_id ).view();
+			Node.view( node_id );
 		} else if( action_id ) {
-			execute_action( { action_id: action_id } );
-		} else {
+			execute_action( action_id );
 		}
 	}
 
 	function get_attribute( element, name ) {
 		var node_id = element.getAttribute( name );
 		var parent_node;
-		
-		if( node_id === undefined  && (parent_node = element.parentNode) ) {
+
+		if( node_id === undefined && ( parent_node = element.parentNode ) ) {
 			node_id = parent_node.getAttribute( name );
 		}
 
@@ -528,11 +589,13 @@
 	// This avoids the need to set a specific handler for each button that is rendered on the UI
 	if( document.addEventListener ) {
 		document.addEventListener( "click", document_click_handler, false );
-	}else {
+	} else {
 		document.attachEvent( "onclick", document_click_handler );
 	}
-	
+
+	NODUS.Node = Node;
+
 	window.NODUS = NODUS;
 	window.Node = Node;
-	
+
 } )( window, document );

@@ -6,15 +6,17 @@
 	performance warning JS1270: Argument defined but not referenced
 	-->
 	<output path="bin\nodus.js" type="js">
-		<arguments>-clobber -term -esc -braces:same -line:M,4 -minify:false -ignore:JS1270,JS1272</arguments>
+		<arguments>-clobber -term -esc -braces:same -version -line:M,4 -minify:false -ignore:JS1270,JS1272</arguments>
 		<input path="node.js"/>
 		<input path="tools.js"/>
+		<input path="request.js"/>
 	</output>
 	
 	<output path="bin\nodus.min.js" type="js">
-		<arguments>-clobber -term -esc -ignore:JS1270,JS1272</arguments>
+		<arguments>-clobber -term -esc  -version -ignore:JS1270,JS1272</arguments>
 		<input path="node.js"/>
 		<input path="tools.js"/>
+		<input path="request.js"/>
 	</output>
 	
 </root>

@@ -32,7 +32,7 @@
 		exceptions.validation = filter( exceptions, function( e ) {
 			return e.type === "Validation";
 		} );
-
+		
 		exceptions.application = filter( exceptions, function( e ) {
 			return e.type === "Application";
 		} );
@@ -48,7 +48,7 @@
 		return object;
 	}
 
-	// OBJECT TYPE VERIFICATION
+	// OBJECT TYPE DETECTION
 	// TAKEN FROM https://github.com/carlosjln/epic
 	var get_type = ( function() {
 		var core_types = {
@@ -81,132 +81,6 @@
 
 		return type;
 	} )();
-
-	var request = ( function( window, undefined ) {
-		
-		var get_transport = window.XMLHttpRequest ?
-			function() { return new XMLHttpRequest(); } :
-			function() { return new ActiveXObject( "Microsoft.XMLHTTP" ) };
-
-		function ajax( settings ) {
-			if( (this instanceof ajax) == false ) {
-				return new ajax( settings );
-			}
-
-			var t = this;
-			var transport = t.transport = get_transport();
-			
-			var typeof_default_property;
-			var value;
-			
-			// COPY ALL PROPERTIES OF SETTING THAT MATCH THE SAME TYPE PROPERTY NAME AND TYPE ON THE REQUEST INSTANCE
-			for( var property in settings ) {
-				typeof_default_property = get_type( t[ property ] );
-				value = settings[ property ];
-				
-				if(  settings.hasOwnProperty(property) && (typeof_default_property === "undefined" || typeof_default_property === get_type(value) )) {
-					t[ property ] = value;
-				}
-			}
-			
-			var method = t.method;
-			var get_method = "GET";
-			var post_method = "POST";
-			
-			transport.open( method, t.url, true );
-			
-			transport.onreadystatechange = function(  ) {
-				t.on_ready_state_change.call( t );
-			};
-			
-			if( method == post_method ){
-				transport.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
-			}
-			
-			transport.send( t.send );
-		}
-
-//		ajax.request = {
-//			method: {
-//				GET: "GET",
-//				POST: "POST"
-//			}
-//		};
-		
-		// DEFAULT SETTINGS ;)
-		ajax.prototype = {
-			url: "",
-			method: "GET",
-			
-			on_complete: function( response ) {
-				
-			},
-			
-			on_success: function( response ) {
-				
-			},
-			
-			on_error: function( response ) {
-				
-			},
-			
-			// DON'T OVERRIDE THESE UNLESS YOU KNOW WHAT YOU ARE MESSING WITH :P
-			on_ready_state_change: function( parameters ) {
-				var transport = this.transport;
-				var ready_state = transport.readyState;
-				var status;
-				
-				// READY STATE AND STATUS CHECK
-				if( ready_state !== 4 ) {
-					return null;
-				}
-				
-				try {
-					status = transport.status;
-				} catch ( e ) {
-					return null;
-				}
-				
-				if( status !== 200 ) {
-					return null;
-				}
-				
-				// PROCESS
-				var response_text = transport.responseText;
-				
-				console.log( response_text );
-			},
-			
-			get_error: function ( number, message ){
-//				var msg = null;
-				
-				// CUSTOM ERROR
-//				if( number === 0 ) msg = message;
-//				if( number === 1 ) msg = "JavaScript error";
-//				if( number === 2 ) msg = "Timeout expired";
-//				if( number === 3 ) msg = "Invalid JSON";
-//				if( number === 4 ) msg = "Error on complete";
-//				if( number === 5 ) msg = "Error on fail'";
-//				if( number === 6 ) msg = "Request aborted";
-//
-//				if( number === 204 ) msg = "No Content";
-//				if( number === 400 ) msg = "Bad Request";
-//				if( number === 401 ) msg = "Unauthorized";
-//				if( number === 403 ) msg = "Forbidden";
-//				if( number === 404 ) msg = "File Not Found";
-//				if( number === 500 ) msg = "Server side error";
-//		
-//				if( number > 0 && msg === '' ) msg = "Unknown error";
-//				
-//				return {
-//					number: parseInt( number, 10),
-//					message: msg
-//				};
-			},
-		};
-		
-		return ajax;
-	} )( window );
 
 	// COPYCAT ENGINE B-)
 	// TAKEN FROM https://github.com/carlosjln/epic
@@ -358,6 +232,7 @@
 	NODUS.merge = merge;
 	NODUS.encode_base64 = encode_base64;
 	NODUS.encode_utf8 = encode_utf8;
-	NODUS.request = request;
+	NODUS.create_style = create_style;
+	NODUS.get_type = get_type;
 
 } )( NODUS, window, document );

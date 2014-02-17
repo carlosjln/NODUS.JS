@@ -27,7 +27,8 @@
 
     <!-- target to build all ajaxmin manifest files in the project -->
     <Target Name="BuildAjaxMinManifests" AfterTargets="Build" Inputs="@AjaxMinManifests" Outputs="@(AjaxMinManifests->'%(FullPath).buildtrigger')">
-        <Message Text="Processing AjaxMin Manifests" Importance="high" />
+        <Message Text=" " Importance="high" />
+		<Message Text="Merging JavaScript files" Importance="high" />
         <AjaxMinManifestTask ProjectDefaultSwitches="-define:$(DefineConstants) $(AjaxMinProjectDefaultSwitches)"
                              Configuration="$(Configuration)"
                              TreatWarningsAsErrors="$(AjaxMinTreatWarningsAsErrors)"
