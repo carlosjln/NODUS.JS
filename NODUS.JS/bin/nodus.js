@@ -70,47 +70,46 @@
         })();
     var get_view = (function() {
             function request_view(node_id, data) {
-                console.log("Requesting view for node { id='" + node_id + "' }");
                 var node = node_collection[node_id];
                 var handlers = node_handlers_collection[node_id];
                 var view_handler = handlers["view"] || {is_empty: true};
-                var on_exception = view_handler.on_exception || handlers.on_exception;
+                var on_exception = view_handler.on_exception || handlers.on_exception || default_exception_handler;
                 var proceed;
                 if (view_handler.is_empty) {
                     var exception = new ApplicationException("The Node [" + node.name + "] does not have a view handler.");
-                    return on_exception.call(handlers, exception)
+                    return on_exception.call(handlers, exception, data)
                 }
-                var view_before_request = view_handler.before_request || function() {
+                var before_request = view_handler.before_request || function() {
                         return true
                     };
                 try {
-                    proceed = view_before_request.call(view_handler, data)
+                    proceed = before_request.call(view_handler, data)
                 }
                 catch(exception) {
                     return on_exception.call(view_handler, exception, data)
                 }
                 if (proceed) {
-                    var view_on_success = view_handler.on_success || function() {
+                    var on_success = view_handler.on_success || function() {
                             throw new Error("Handle.view.on_success is undefined.");
                         };
                     var context = {
-                            node: node, NODE: Node, view_handler: view_handler, view_on_success: view_on_success, on_application_exception: on_exception
+                            node: node, NODE: Node, view_handler: view_handler, on_success: on_success, on_exception: on_exception
                         };
                     var cached_view = cached_views[node_id];
                     if (cached_view) {
-                        return on_sucess.call(view_handler, cached_view)
+                        return on_ajax_success.call(view_handler, cached_view)
                     }
                     AJAX({
-                        url: node_id + "/view/", context: context, before_request: before_request, on_success: on_sucess, on_error: on_exception
+                        url: node_id + "/view/", context: context, before_request: before_ajax_request, on_success: on_ajax_success, on_error: on_exception
                     })
                 }
                 return node
             }
-            function before_request() {
+            function before_ajax_request() {
                 var node = this.node;
                 console.log("Requesting view for Node{ name=" + node.name + " id=" + node.id + " }")
             }
-            function on_sucess(response) {
+            function on_ajax_success(response) {
                 var self = this;
                 var reply = NODUS.parse_reply(response);
                 if (reply.has_errors()) {
@@ -125,10 +124,10 @@
                     NODUS.create_style(view.style).id = style_id
                 }
                 try {
-                    self.view_on_success.call(self.view_handler, view, self.data)
+                    self.on_success.call(self.view_handler, view, self.data)
                 }
                 catch(on_success_exception) {
-                    self.on_application_exception.call(self.view_handler, new ApplicationException(on_success_exception))
+                    self.on_exception.call(self.view_handler, new ApplicationException(on_success_exception))
                 }
             }
             return request_view
@@ -161,8 +160,9 @@
                 console.log(new Error("The action '" + action_name + "' is undefined."))
             }
         }};
-    Node.view = function(node_id, data) {
-        validate_node(node_id, get_view, data)
+    Node.view = function(object, data) {
+        object = typeof object === "string" ? object : object.id;
+        validate_node(object, get_view, data)
     };
     function register_node(node) {
         var id = node.id;
@@ -372,23 +372,35 @@
     window.Node = Node
 })(window, document);
 (function(NODUS, window, document) {
-    function build_node_tree(node_list) {
+    function build_tree(nodes) {
         var modules = {};
-        var nodes = node_list.slice(0);
-        build_tree(modules, nodes);
-        return modules
-    }
-    function build_tree(parent, nodes) {
-        var parent_id = parent.id;
+        var collection = {};
         var i = nodes.length;
+        var j = i;
         var node;
+        var parent;
+        var node_id;
+        var node_name;
+        var new_node;
+        nodes = nodes.slice(0);
         while (i--) {
-            node = new Node(nodes[i]);
-            if (node.parent_id === parent_id) {
-                parent[node.name] = node;
-                build_tree(node, nodes)
+            node = nodes[i];
+            collection[node.id] = new Node(node)
+        }
+        while (j--) {
+            node = nodes[j];
+            node_name = node.name;
+            node_id = node.id;
+            parent = collection[node.parent_id];
+            new_node = collection[node_id];
+            if (parent === undefined) {
+                modules[node_name] = new_node
+            }
+            else {
+                parent[node_name] = new_node
             }
         }
+        return modules
     }
     function parse_reply(object) {
         var exceptions = object.exceptions;
@@ -540,7 +552,7 @@
         }
         return result
     }
-    NODUS.build_node_tree = build_node_tree;
+    NODUS.Node.build_tree = build_tree;
     NODUS.parse_reply = parse_reply;
     NODUS.merge = merge;
     NODUS.encode_base64 = encode_base64;

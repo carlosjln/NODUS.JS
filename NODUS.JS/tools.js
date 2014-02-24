@@ -1,28 +1,42 @@
 ﻿( function( NODUS, window, document ) {
 
 	// BUILD NODE TREE
-	function build_node_tree( node_list ) {
+	function build_tree( nodes ) {
 		var modules = {};
-		var nodes = node_list.slice( 0 );
-
-		build_tree( modules, nodes );
-
-		return modules;
-	}
-
-	function build_tree( parent, nodes ) {
-		var parent_id = parent.id;
+		var collection = {};
+		
 		var i = nodes.length;
+		var j = i;
+		
 		var node;
+		var parent;
+		var node_id;
+		var node_name;
+		var new_node;
+		
+		nodes = nodes.slice( 0 );
 
 		while( i-- ) {
-			node = new Node( nodes[ i ] );
-
-			if( node.parent_id === parent_id ) {
-				parent[ node.name ] = node;
-				build_tree( node, nodes );
+			node = nodes[i];
+			collection[ node.id ] = new Node( node );
+		}
+		
+		while( j-- ) {
+			node = nodes[j];
+			node_name = node.name;
+			node_id = node.id;
+			
+			parent = collection[ node.parent_id ];
+			new_node = collection[ node_id ];
+			
+			if( parent === undefined ) {
+				modules[ node_name ] = new_node;
+			} else {
+				parent[ node_name ] = new_node;
 			}
 		}
+		
+		return modules;
 	}
 
 	// REPLY
@@ -227,7 +241,7 @@
 		return result;
 	}
 
-	NODUS.build_node_tree = build_node_tree;
+	NODUS.Node.build_tree = build_tree;
 	NODUS.parse_reply = parse_reply;
 	NODUS.merge = merge;
 	NODUS.encode_base64 = encode_base64;

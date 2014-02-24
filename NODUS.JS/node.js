@@ -124,36 +124,32 @@
 	// REQUEST NODE VIEW
 	var get_view = ( function() {
 		function request_view( node_id, data ) {
-			///#DEBUG
-			console.log( "Requesting view for node { id='" + node_id + "' }" );
-			///#ENDDEBUG
-
 			var node = node_collection[ node_id ];
 
 			var handlers = node_handlers_collection[ node_id ];
 			var view_handler = handlers[ "view" ] || { is_empty: true };
-			var on_exception = view_handler.on_exception || handlers.on_exception;
-
+			var on_exception = view_handler.on_exception || handlers.on_exception || default_exception_handler;
+			
 			var proceed;
 
 			if( view_handler.is_empty ) {
 				var exception = new ApplicationException( "The Node [" + node.name + "] does not have a view handler." );
-				return on_exception.call( handlers, exception );
+				return on_exception.call( handlers, exception, data );
 			}
 
 			// NODE HANDLERS
-			var view_before_request = view_handler.before_request || function() {
+			var before_request = view_handler.before_request || function() {
 				return true;
 			};
 
 			try {
-				proceed = view_before_request.call( view_handler, data );
+				proceed = before_request.call( view_handler, data );
 			} catch( exception ) {
 				return on_exception.call( view_handler, exception, data );
 			}
 
 			if( proceed ) {
-				var view_on_success = view_handler.on_success || function() {
+				var on_success = view_handler.on_success || function() {
 					throw new Error( "Handle.view.on_success is undefined." );
 				};
 
@@ -162,21 +158,21 @@
 					NODE: Node,
 
 					view_handler: view_handler,
-					view_on_success: view_on_success,
-					on_application_exception: on_exception
+					on_success: on_success,
+					on_exception: on_exception
 				};
 
 				var cached_view = cached_views[ node_id ];
 				if( cached_view ) {
-					return on_sucess.call( view_handler, cached_view );
+					return on_ajax_success.call( view_handler, cached_view );
 				}
 
 				AJAX( {
 					url: node_id + "/view/",
 					context: context,
 
-					before_request: before_request,
-					on_success: on_sucess,
+					before_request: before_ajax_request,
+					on_success: on_ajax_success,
 					on_error: on_exception
 				} );
 			}
@@ -184,17 +180,17 @@
 			return node;
 		}
 
-		function before_request() {
+		function before_ajax_request() {
 			///#DEBUG
 			var node = this.node;
 			console.log( "Requesting view for Node{ name=" + node.name + " id=" + node.id + " }" );
 			///#ENDDEBUG
 		}
 
-		function on_sucess( response ) {
+		function on_ajax_success( response ) {
 			var self = this;
 			var reply = NODUS.parse_reply( response );
-
+			
 			if( reply.has_errors() ) {
 				return self.on_application_exception.call( self.view_handler, reply.exceptions );
 			}
@@ -212,9 +208,9 @@
 			}
 
 			try {
-				self.view_on_success.call( self.view_handler, view, self.data );
+				self.on_success.call( self.view_handler, view, self.data );
 			} catch( on_success_exception ) {
-				self.on_application_exception.call( self.view_handler, new ApplicationException( on_success_exception ) );
+				self.on_exception.call( self.view_handler, new ApplicationException( on_success_exception ) );
 			}
 		}
 		
@@ -274,8 +270,9 @@
 		}
 	};
 
-	Node.view = function( node_id, data ) {
-		validate_node( node_id, get_view, data );
+	Node.view = function( object, data ) {
+		object = typeof object  === "string" ? object : object.id;
+		validate_node( object, get_view, data );
 	};
 
 	// UTILITIES

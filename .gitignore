@@ -6,6 +6,8 @@ epic/obj/
 x64/
 [Bb]ackup
 
+git-commit.bat
+
 # mstest test results
 TestResults
 [Tt]est[Rr]esult*
